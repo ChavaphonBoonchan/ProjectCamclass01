@@ -1,0 +1,40 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic[email]==2.5.0
+email-validator==2.1.0
+python-multipart==0.0.6
+requests==2.31.0
+websockets==12.0
+httpx==0.25.2
+python-dotenv==1.0.0
+
+# NOTE (Windows + Python 3.14 / cp314):
+# Pinning numpy to older versions can force source builds (needs VS Build Tools).
+# Prefer allowing pip to select an available wheel.
+numpy>=1.24.0,<2.0.0
+opencv-python>=4.8.0
+scikit-learn>=1.3.0
+joblib>=1.3.0
+tqdm>=4.66.0
+pillow>=10.0.0
+
+# Face engine (ONNX-based)
+#
+# Face engine (InsightFace + ONNXRuntime)
+# NOTE:
+# - `onnxruntime` มี wheel สำหรับ Python 3.12 บน Windows แล้ว สามารถติดตั้งได้ตรง ๆ
+# - `insightface` ต้องคอมไพล์ extension C++ บางส่วน จึงต้องมี "Microsoft C++ Build Tools (MSVC 14+)"
+# 
+# สำหรับ CPU-only ใช้:
+onnxruntime>=1.15.0
+# สำหรับ GPU (CUDA) ให้ติดตั้งแทน onnxruntime ด้วยคำสั่ง:
+# pip uninstall onnxruntime
+# pip install onnxruntime-gpu
+# หรือถ้าต้องการเวอร์ชันเฉพาะ: pip install onnxruntime-gpu==1.23.2
+insightface>=0.7.3
+
+# GPU monitoring (optional, for GPU usage display)
+gputil>=1.4.0
+psutil>=5.9.0
+
