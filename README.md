@@ -24,8 +24,8 @@
 
 #### 1️⃣ **Clone โปรเจคต์**
 ```bash
-git clone https://github.com/ChavaphonBoonchan/camclass01.git
-cd camclass01
+git clone https://github.com/ChavaphonBoonchan/ProjectCamclass01.git
+cd ProjectCamclass01
 ```
 
 #### 2️⃣ **ติดตั้ง Python Environment**
