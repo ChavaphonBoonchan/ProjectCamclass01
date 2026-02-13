@@ -229,5 +229,3 @@ camclass01/
 ## 📄 License
 
 MIT License - ใช้งานได้อย่างอิสระโดยห้ามใช้ในเชิงพาณิชย์
-# Project Camclass 01#   P r o j e c t C a m c l a s s 0 1  
- 
