@@ -197,7 +197,7 @@ dir .env
 ## 🏗️ โครงสร้างโปรเจคต์
 
 ```
-camclass01/
+ProjectCamclass01/
 ├── 📁 app/                 # Backend FastAPI server
 ├── 📁 web_app/            # Frontend Nuxt.js application  
 ├── 📁 detection_prod/     # Production detection scripts
