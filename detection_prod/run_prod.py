@@ -46,7 +46,7 @@ async def main_async() -> None:
     print("=" * 60)
     
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", default="detection_debug/config.example.json", help="Path to config file")
+    ap.add_argument("--config", default="detection_prod/config.json", help="Path to config file")
     ap.add_argument("--provider", default=None, help='Override provider, e.g. "CUDAExecutionProvider"')
     args = ap.parse_args()
 

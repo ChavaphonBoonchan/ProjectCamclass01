@@ -1,34 +1,72 @@
 # 🚀 Quick Start Guide
 
-## วิธีรันระบบ (3 ขั้นตอนง่ายๆ)
+คู่มือเริ่มต้นใช้งานระบบเช็คชื่อด้วยใบหน้าใน 5 นาที
 
-### ขั้นตอนที่ 1: รัน Backend Server
+## 📋 ข้อกำหนดเบื้องต้น
+
+- ✅ Python 3.8+ ติดตั้งแล้ว
+- ✅ Node.js 16+ ติดตั้งแล้ว  
+- ✅ มีกล้องเชื่อมต่อกับคอมพิวเตอร์
+- ✅ Git ติดตั้งแล้ว
+
+## 🔧 ขั้นตอนที่ 1: Clone และ Setup
+
 ```bash
-# ดับเบิลคลิก หรือรันใน terminal
-bin\start_server.bat
+# Clone repository
+git clone https://github.com/ChavaphonBoonchan/ProjectCamclass01.git
+cd ProjectCamclass01
 
-# หรือรันด้วย Python
-python app\server.py
+# สร้าง Python virtual environment
+python -m venv .venv
+
+# เปิดใช้งาน virtual environment
+# Windows:
+.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
+
+# ติดตั้ง Python dependencies
+pip install -r requirements.txt
 ```
-✅ Backend จะทำงานที่ http://localhost:8000
 
-### ขั้นตอนที่ 2: รัน Face Detection (ถ้าต้องการใช้กล้อง)
+## 📦 ขั้นตอนที่ 2: ติดตั้ง Web Dependencies
+
 ```bash
-# ดับเบิลคลิก หรือรันใน terminal
-bin\start_detection.bat
-
-# หรือรันด้วย Python
-cd detection_prod
-python run_prod.py --config config.json
+cd web_app
+npm install
+cd ..
 ```
-✅ กล้องจะเปิดและเริ่มตรวจจับใบหน้า
 
-### ขั้นตอนที่ 3: รัน Web Application
+## ⚙️ ขั้นตอนที่ 3: ตั้งค่า Environment
+
 ```bash
-# ดับเบิลคลิก หรือรันใน terminal
-bin\start_webapp.bat
+# คัดลอกไฟล์ template
+copy .env.example .env
 
-# หรือรันด้วย npm
+# แก้ไขไฟล์ .env ด้วย notepad
+notepad .env
+```
+
+**ตั้งค่าขั้นต่ำ:**
+```env
+# สำหรับ Telegram แจ้งเตือน (ไม่บังคับ)
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+TELEGRAM_CHAT_ID=your_chat_id_here
+```
+
+## 🚀 ขั้นตอนที่ 4: เริ่มระบบ
+
+**เปิด 3 Terminal แยกกัน:**
+
+### Terminal 1 - Backend Server
+```bash
+.venv\Scripts\activate
+python app/server.py
+```
+➡️ **ผลลัพธ์:** Server จะรันที่ http://localhost:8000
+
+### Terminal 2 - Web Frontend  
+```bash
 cd web_app
 npm run dev
 ```
@@ -160,8 +198,12 @@ netstat -an | findstr :8000
 ## 🧪 ทดสอบระบบ
 
 ```bash
-# รัน test script
-python test_system_complete.py
+# ทดสอบ Telegram (ถ้าตั้งค่าแล้ว)
+python app/test_telegram.py
+
+# ตรวจสอบ API endpoints
+curl http://localhost:8000/health
+curl http://localhost:8000/api/v1/activity-logs?limit=5
 ```
 
 ---
@@ -169,28 +211,26 @@ python test_system_complete.py
 ## 📁 โครงสร้างไฟล์
 
 ```
-project/
-├── server.py              # Backend Server (รันอันนี้!)
-├── start_server.bat       # Script รัน backend
-├── start_detection.bat    # Script รัน detection
-├── start_webapp.bat       # Script รัน web app
-├── test_system_complete.py # ทดสอบระบบ
-│
-├── dashboard/
-│   └── attendance.db      # SQLite Database
-│
-├── detection_prod/
-│   ├── config.json        # ค่ากำหนดกล้อง
-│   └── run_prod.py        # โปรแกรมตรวจจับ
-│
-├── model_store/           # โมเดล face recognition
-│   ├── model.pkl
-│   ├── embeddings.npy
-│   └── labels.npy
-│
-└── web_app/               # Frontend (Nuxt 3)
-    ├── pages/
-    └── nuxt.config.ts
+ProjectCamclass01/
+├── 📁 app/                 # Backend FastAPI server
+│   └── server.py          # Main server file
+├── 📁 web_app/            # Frontend Nuxt.js application  
+│   ├── pages/
+│   └── nuxt.config.ts
+├── 📁 detection_prod/     # Production detection scripts
+│   ├── config.json        # Detection configuration
+│   └── run_prod.py        # Face detection program
+├── 📁 face_common/        # Face recognition utilities
+├── 📁 model_store/        # Models และ label_map.json
+│   └── label_map.json
+├── 📁 database/           # SQLite database files
+│   └── attendance.db      # Main database
+├── 📁 dataset/           # Training photos
+│   └── student_photos/
+├── 📄 .env.example       # Environment template
+├── 📄 requirements.txt   # Python dependencies
+├── 📄 README.md         # คู่มือโดยละเอียด
+└── 📄 QUICK_START.md    # คู่มือนี้
 ```
 
 ---
@@ -203,7 +243,8 @@ project/
 netstat -an | findstr :8000
 
 # ลองรันใหม่
-python server.py
+.venv\Scripts\activate
+python app/server.py
 ```
 
 ### WebSocket ไม่เชื่อมต่อ

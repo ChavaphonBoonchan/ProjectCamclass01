@@ -374,27 +374,55 @@ const saveManualAttendance = async () => {
   }
 }
 
+// Captured snapshot state
+const capturedFaces = ref([])
+const capturedImage = ref(null)
+
 const checkAttendanceFromCamera = async () => {
   if (knownFaces.value.length === 0) {
     showMessage('ไม่พบใบหน้าที่ตรวจจับได้', 'error')
     return
   }
   
-  // Show summary popup instead of immediate save
-  detectedStudentsForSummary.value = [...knownFaces.value]
+  // Capture ณ ขณะนั้น - snapshot ใบหน้าและรูปจากกล้อง
+  capturedFaces.value = JSON.parse(JSON.stringify(knownFaces.value))
+  capturedImage.value = streamImage.value
+  
+  // Show summary popup
+  detectedStudentsForSummary.value = [...capturedFaces.value]
   currentTime.value = new Date().toLocaleTimeString('th-TH')
   
-  // Check which students are already checked in today
+  // โหลดข้อมูลนักเรียนและโยกสวิตช์ออโต้
   try {
     const response = await $fetch(`${config.public.apiBase}/api/v1/attendance/students-status?date=${selectedDate.value}`)
     if (response.success) {
-      const checkedStudents = response.data.filter(s => s.present).map(s => s.name)
-      alreadyCheckedStudents.value = knownFaces.value
+      studentsStatus.value = response.data
+      
+      // โยกสวิตช์ออโต้สำหรับคนที่เจอในรูป
+      const detectedNames = new Set(capturedFaces.value.map(f => f.name))
+      
+      studentsStatus.value.forEach(student => {
+        if (detectedNames.has(student.name)) {
+          // เจอในรูป → โยกเปิด (มา)
+          student.present = true
+          student.checked_by_camera = true
+        } else {
+          // ไม่เจอในรูป → โยกปิด (ขาด) แต่ยังแก้ไขได้
+          student.present = false
+          student.checked_by_camera = false
+        }
+      })
+      
+      // หาคนที่เช็คชื่อไปแล้ววันนี้
+      const checkedStudents = response.data.filter(s => s.present && !detectedNames.has(s.name)).map(s => s.name)
+      alreadyCheckedStudents.value = capturedFaces.value
         .map(f => f.name)
         .filter(name => checkedStudents.includes(name))
+      
+      hasModifications.value = true // มีการเปลี่ยนแปลงสวิตช์
     }
   } catch (error) {
-    console.error('Error checking existing attendance:', error)
+    console.error('Error loading attendance status:', error)
     alreadyCheckedStudents.value = []
   }
   
@@ -402,7 +430,29 @@ const checkAttendanceFromCamera = async () => {
 }
 
 const confirmAttendanceCheck = async () => {
-  if (detectedStudentsForSummary.value.length === 0) {
+  // รวมนักเรียนจากกล้อง + manual toggle ที่เปิด
+  const facesToSave = []
+  
+  // เพิ่มนักเรียนจากกล้อง (captured snapshot)
+  if (capturedFaces.value && Array.isArray(capturedFaces.value)) {
+    for (const face of capturedFaces.value) {
+      if (face && face.name) {
+        facesToSave.push({ name: face.name, confidence: face.confidence || 0 })
+      }
+    }
+  }
+  
+  // เพิ่มนักเรียนจาก manual toggle ที่เปิดเพิ่ม (ไม่ซ้ำกับกล้อง)
+  const cameraNames = new Set(facesToSave.map(f => f.name))
+  if (studentsStatus.value && Array.isArray(studentsStatus.value)) {
+    for (const student of studentsStatus.value) {
+      if (student && student.present && student.name && !cameraNames.has(student.name) && !student.checked_by_camera) {
+        facesToSave.push({ name: student.name, confidence: 1.0 })
+      }
+    }
+  }
+  
+  if (facesToSave.length === 0) {
     showMessage('ไม่มีนักเรียนที่จะบันทึก', 'error')
     showSummaryModal.value = false
     return
@@ -413,15 +463,20 @@ const confirmAttendanceCheck = async () => {
     const response = await $fetch(`${config.public.apiBase}/api/v1/attendance/check`, {
       method: 'POST',
       body: {
-        known_faces: detectedStudentsForSummary.value,
+        known_faces: facesToSave,
         camera_id: 'camera_0',
+        stream_image: capturedImage.value,
         timestamp: new Date().toISOString()
       }
     })
     
     if (response.status === 'success') {
       showSummaryModal.value = false
-      showMessage(`เช็คชื่อสำเร็จ! ${response.saved_names.join(', ')}`, 'success')
+      const names = response.saved_names || []
+      const alreadyMsg = response.already_checked?.length > 0 
+        ? ` (เพิ่งเช็คแล้ว: ${response.already_checked.join(', ')})` 
+        : ''
+      showMessage(`เช็คชื่อสำเร็จ! ${names.join(', ')}${alreadyMsg}`, 'success')
       await loadAttendanceStatus()
       
       // Navigate to dashboard after successful save
@@ -441,6 +496,8 @@ const cancelAttendanceCheck = () => {
   showSummaryModal.value = false
   detectedStudentsForSummary.value = []
   alreadyCheckedStudents.value = []
+  capturedFaces.value = []
+  capturedImage.value = null
 }
 
 const formatDate = (dateString) => {
@@ -491,9 +548,12 @@ const connectWebSocket = () => {
     console.error('WebSocket error:', error)
   }
   
-  ws.onclose = () => {
-    console.log('WebSocket disconnected, reconnecting...')
-    setTimeout(connectWebSocket, 3000)
+  ws.onclose = (event) => {
+    console.log('WebSocket disconnected, reconnecting...', event.code, event.reason)
+    // Only reconnect if not manually closed
+    if (event.code !== 1000) {
+      setTimeout(connectWebSocket, 3000)
+    }
   }
 }
 

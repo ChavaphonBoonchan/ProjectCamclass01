@@ -79,6 +79,61 @@
       </div>
     </div>
 
+    <!-- Add New Record -->
+    <div class="bg-white rounded-lg shadow-lg p-6">
+      <h2 class="text-lg font-bold text-blue-900 mb-4 flex items-center">
+        <Plus class="mr-2" size="20" />
+        เพิ่มรายการใหม่
+      </h2>
+      
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อนักเรียน</label>
+          <select 
+            v-model="newRecord.name"
+            class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">-- เลือกนักเรียน --</option>
+            <option v-for="student in modelStudents" :key="student.name" :value="student.name">
+              {{ student.name }}
+            </option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">วันที่</label>
+          <input 
+            type="date"
+            v-model="newRecord.date"
+            class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">เวลา</label>
+          <input 
+            type="time"
+            v-model="newRecord.time"
+            class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div class="flex items-end">
+          <button 
+            @click="addNewRecord"
+            :disabled="!newRecord.name || adding"
+            class="w-full py-2 bg-green-500 text-white font-medium rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <span v-if="adding" class="flex items-center justify-center">
+              <RefreshCw class="animate-spin mr-1" size="16" />
+              กำลังเพิ่ม...
+            </span>
+            <span v-else class="flex items-center justify-center">
+              <Plus class="mr-1" size="16" />
+              เพิ่มรายการ
+            </span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- Records Table -->
     <div class="bg-white rounded-lg shadow-lg overflow-hidden">
       <div class="p-4 border-b border-gray-200 flex items-center justify-between">
@@ -142,6 +197,7 @@
               <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">เวลา</th>
               <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ความมั่นใจ</th>
               <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">แหล่งที่มา</th>
+              <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">สถานะ</th>
               <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">จัดการ</th>
             </tr>
           </thead>
@@ -213,6 +269,23 @@
                       :class="record.camera_id === 'manual' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'">
                   {{ record.camera_id === 'manual' ? '✋ Manual' : '📷 Camera' }}
                 </span>
+              </td>
+              
+              <!-- Status -->
+              <td class="px-4 py-3 text-sm">
+                <div v-if="record.modified_at" class="flex flex-col">
+                  <span class="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700 mb-1">
+                    🔄 แก้ไขแล้ว
+                  </span>
+                  <span class="text-xs text-gray-500">
+                    {{ formatDateTime(record.modified_at) }}
+                  </span>
+                </div>
+                <div v-else>
+                  <span class="px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                    ✅ ต้นฉบับ
+                  </span>
+                </div>
               </td>
               
               <!-- Actions -->
@@ -288,61 +361,6 @@
         <FileText size="48" class="mx-auto mb-2 opacity-50" />
         <p>ไม่พบข้อมูลการเช็คชื่อในวันที่เลือก</p>
         <p class="text-sm mt-1">ลองเปลี่ยนวันที่หรือเงื่อนไขการกรอง</p>
-      </div>
-    </div>
-
-    <!-- Add New Record -->
-    <div class="bg-white rounded-lg shadow-lg p-6">
-      <h2 class="text-lg font-bold text-blue-900 mb-4 flex items-center">
-        <Plus class="mr-2" size="20" />
-        เพิ่มรายการใหม่
-      </h2>
-      
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อนักเรียน</label>
-          <select 
-            v-model="newRecord.name"
-            class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">-- เลือกนักเรียน --</option>
-            <option v-for="student in modelStudents" :key="student.name" :value="student.name">
-              {{ student.name }}
-            </option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">วันที่</label>
-          <input 
-            type="date"
-            v-model="newRecord.date"
-            class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">เวลา</label>
-          <input 
-            type="time"
-            v-model="newRecord.time"
-            class="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div class="flex items-end">
-          <button 
-            @click="addNewRecord"
-            :disabled="!newRecord.name || adding"
-            class="w-full py-2 bg-green-500 text-white font-medium rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <span v-if="adding" class="flex items-center justify-center">
-              <RefreshCw class="animate-spin mr-1" size="16" />
-              กำลังเพิ่ม...
-            </span>
-            <span v-else class="flex items-center justify-center">
-              <Plus class="mr-1" size="16" />
-              เพิ่มรายการ
-            </span>
-          </button>
-        </div>
       </div>
     </div>
 
@@ -426,10 +444,15 @@ const showDeleteModal = ref(false)
 const deleteTarget = ref(null)
 
 // New record
+const getCurrentTime = () => {
+  const now = new Date()
+  return now.toTimeString().slice(0, 5) // HH:MM format
+}
+
 const newRecord = ref({
   name: '',
   date: new Date().toISOString().split('T')[0],
-  time: '09:00'
+  time: getCurrentTime()
 })
 
 // Computed
@@ -632,7 +655,7 @@ const addNewRecord = async () => {
       newRecord.value = {
         name: '',
         date: new Date().toISOString().split('T')[0],
-        time: '09:00'
+        time: getCurrentTime()
       }
       await loadRecords()
     }
@@ -641,6 +664,24 @@ const addNewRecord = async () => {
     showMessage('ไม่สามารถเพิ่มได้', 'error')
   } finally {
     adding.value = false
+  }
+}
+
+const formatDateTime = (dateTimeString) => {
+  if (!dateTimeString) return ''
+  try {
+    const date = new Date(dateTimeString)
+    if (isNaN(date.getTime())) return 'Invalid Date'
+    return date.toLocaleString('th-TH', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  } catch (error) {
+    console.error('Date formatting error:', error)
+    return 'Error'
   }
 }
 

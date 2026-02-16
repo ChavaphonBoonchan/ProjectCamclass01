@@ -163,32 +163,6 @@
       </div>
     </div>
 
-    <!-- Quick Actions -->
-    <div class="bg-white rounded-lg shadow-lg p-6">
-      <h3 class="text-lg font-bold text-blue-900 mb-4 flex items-center">
-        <Zap size="20" class="mr-2" />
-        การดำเนินการ
-      </h3>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <NuxtLink to="/" 
-                  class="flex items-center justify-center p-4 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors group">
-          <ClipboardCheck size="20" class="text-green-600 mr-2" />
-          <span class="font-medium text-green-700 group-hover:text-green-800">เช็คชื่อใหม่</span>
-        </NuxtLink>
-        
-        <NuxtLink to="/history-edit" 
-                  class="flex items-center justify-center p-4 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors group">
-          <FileEdit size="20" class="text-blue-600 mr-2" />
-          <span class="font-medium text-blue-700 group-hover:text-blue-800">แก้ไขประวัติ</span>
-        </NuxtLink>
-        
-        <NuxtLink to="/students-new" 
-                  class="flex items-center justify-center p-4 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors group">
-          <Users size="20" class="text-purple-600 mr-2" />
-          <span class="font-medium text-purple-700 group-hover:text-purple-800">รายชื่อนักเรียน</span>
-        </NuxtLink>
-      </div>
-    </div>
   </div>
 </template>
 

@@ -10,6 +10,7 @@
 - **🗄️ Database Management**: ฐานข้อมูล SQLite พร้อมประวัติการเช็คชื่อ
 - **✋ Manual Override**: สามารถเช็คชื่อด้วยตนเองได้
 - **📷 Multi-session Support**: รองรับการเช็คชื่อหลายครั้งต่อวัน
+- **📊 Activity Logging**: บันทึกและรายงานการกระทำทั้งหมดผ่าน Telegram
 
 ## 🚀 Quick Setup Guide
 
@@ -24,8 +25,8 @@
 
 #### 1️⃣ **Clone โปรเจคต์**
 ```bash
-git clone https://github.com/ChavaphonBoonchan/camclass01.git
-cd camclass01
+git clone https://github.com/ChavaphonBoonchan/ProjectCamclass01.git
+cd ProjectCamclass01
 ```
 
 #### 2️⃣ **ติดตั้ง Python Environment**
@@ -142,12 +143,18 @@ python detection_prod/run_prod.py
 
 ### ⚙️ ปรับแต่งการตรวจจับ
 
-แก้ไขไฟล์ `.env`:
-```env
-CONFIDENCE_THRESHOLD=0.7    # ความแม่นยำ (0.0-1.0)
-CAMERA_ID=0                 # หมายเลขกล้อง
-DETECTION_INTERVAL=1.0      # ความถี่การตรวจจับ (วินาที)
+แก้ไขไฟล์ `detection_prod/config.json`:
+```json
+{
+  "camera_index": 0,
+  "confidence_threshold": 0.7,
+  "fps_limit": 30,
+  "model_dir": "model_store",
+  "api_base": "http://localhost:8000"
+}
 ```
+
+**หมายเหตุ:** ไฟล์ `.env` ใช้สำหรับ server config (Telegram) เท่านั้น
 
 ## 🛠️ Troubleshooting
 

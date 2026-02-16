@@ -3,7 +3,7 @@
 Face Attendance Backend Server - Complete Version
 รวม API, WebSocket, SQLite และ Telegram Notification
 """
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional
@@ -64,6 +64,23 @@ def init_db():
         )
     ''')
     
+    # Activity logs table for tracking user actions
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action_type TEXT NOT NULL,
+            description TEXT NOT NULL,
+            user_ip TEXT,
+            user_agent TEXT,
+            target_table TEXT,
+            target_id INTEGER,
+            old_data TEXT,
+            new_data TEXT,
+            timestamp TEXT NOT NULL,
+            success BOOLEAN DEFAULT TRUE
+        )
+    ''')
+    
     
     # Check if attendance table exists and has the right columns
     c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='attendance'")
@@ -95,6 +112,11 @@ def init_db():
                 c.execute('ALTER TABLE attendance ADD COLUMN image_base64 TEXT')
             except:
                 pass
+        if 'modified_at' not in columns:
+            try:
+                c.execute('ALTER TABLE attendance ADD COLUMN modified_at TEXT')
+            except:
+                pass
     else:
         # Create new attendance table
         c.execute('''
@@ -107,6 +129,7 @@ def init_db():
                 confidence_score REAL,
                 camera_id TEXT,
                 image_base64 TEXT,
+                modified_at TEXT,
                 FOREIGN KEY (session_id) REFERENCES attendance_sessions (id),
                 FOREIGN KEY (student_id) REFERENCES students (id)
             )
@@ -211,6 +234,91 @@ async def send_telegram_photo(photo_base64: str, caption: str = ""):
     except Exception as e:
         print(f"❌ Telegram photo error: {e}")
         return False
+
+# ============================================================
+# Activity Logging System
+# ============================================================
+async def log_activity(
+    action_type: str,
+    description: str,
+    request: Request = None,
+    target_table: str = None,
+    target_id: int = None,
+    old_data: Dict = None,
+    new_data: Dict = None,
+    success: bool = True
+):
+    """Log user activity to database and optionally send to Telegram"""
+    try:
+        conn = get_db()
+        c = conn.cursor()
+        
+        # Get user info from request (with error handling)
+        try:
+            user_ip = request.client.host if request and hasattr(request, 'client') else "system"
+            user_agent = request.headers.get("user-agent", "") if request and hasattr(request, 'headers') else "system"
+        except Exception:
+            user_ip = "system"
+            user_agent = "system"
+        
+        # Insert log
+        c.execute('''
+            INSERT INTO activity_logs 
+            (action_type, description, user_ip, user_agent, target_table, target_id, old_data, new_data, timestamp, success)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            action_type,
+            description,
+            user_ip,
+            user_agent,
+            target_table,
+            target_id,
+            json.dumps(old_data) if old_data else None,
+            json.dumps(new_data) if new_data else None,
+            datetime.now().isoformat(),
+            success
+        ))
+        
+        conn.commit()
+        conn.close()
+        
+        # Send to Telegram if enabled and it's an important action
+        if state.telegram_enabled and action_type in ['attendance_check', 'attendance_edit', 'attendance_delete', 'manual_attendance']:
+            await send_activity_to_telegram(action_type, description, user_ip, success)
+            
+    except Exception as e:
+        print(f"❌ Logging error: {e}")
+
+async def send_activity_to_telegram(action_type: str, description: str, user_ip: str, success: bool):
+    """Send activity log to Telegram"""
+    try:
+        now = datetime.now()
+        time_str = now.strftime('%H:%M:%S')
+        date_str = now.strftime('%d/%m/%Y')
+        
+        # Action type emojis
+        action_emojis = {
+            'attendance_check': '✅',
+            'attendance_edit': '✏️',
+            'attendance_delete': '🗑️',
+            'manual_attendance': '✋'
+        }
+        
+        emoji = action_emojis.get(action_type, '📝')
+        status_emoji = '✅' if success else '❌'
+        
+        message = f"{emoji} <b>กิจกรรมระบบ</b>\n"
+        message += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        message += f"📅 <b>วันที่:</b> {date_str}\n"
+        message += f"⏰ <b>เวลา:</b> {time_str}\n"
+        message += f"🌐 <b>IP:</b> {user_ip}\n"
+        message += f"{status_emoji} <b>สถานะ:</b> {'สำเร็จ' if success else 'ล้มเหลว'}\n\n"
+        message += f"📝 <b>รายละเอียด:</b>\n{description}"
+        
+        asyncio.create_task(send_telegram_message(message))
+        
+    except Exception as e:
+        print(f"❌ Telegram activity log error: {e}")
 
 # ============================================================
 # Global State
@@ -324,16 +432,27 @@ async def ingest_detection(payload: Dict[str, Any]):
 # Attendance Endpoints
 # ============================================================
 @app.post("/api/v1/attendance/check")
-async def check_attendance():
-    """Save detected faces as attendance"""
-    if not state.last_detection:
+async def check_attendance(payload: Dict[str, Any] = None, request: Request = None):
+    """Save detected faces as attendance
+    
+    รับ body จาก frontend: {known_faces, camera_id, stream_image}
+    ถ้าไม่มี body จะใช้ state.last_detection แทน (backward compatible)
+    """
+    # ใช้ body ที่ส่งมา หรือ fallback ไปใช้ state.last_detection
+    if payload and payload.get("known_faces"):
+        data = payload
+    elif state.last_detection:
+        data = state.last_detection
+    else:
         raise HTTPException(status_code=400, detail="No detection data available")
     
-    payload = state.last_detection
-    known_faces = payload.get("known_faces", [])
+    known_faces = data.get("known_faces", [])
     
     if not known_faces:
         raise HTTPException(status_code=400, detail="No known faces detected")
+    
+    camera_id = data.get("camera_id", "unknown")
+    stream_image = data.get("stream_image")
     
     conn = get_db()
     c = conn.cursor()
@@ -341,8 +460,6 @@ async def check_attendance():
     saved_count = 0
     already_checked = []
     saved_names = []
-    
-    today = datetime.now().strftime('%Y-%m-%d')
     
     for face in known_faces:
         name = face.get("name", "Unknown")
@@ -366,15 +483,25 @@ async def check_attendance():
             name,
             datetime.now().isoformat(),
             confidence,
-            payload.get("camera_id", "unknown"),
-            payload.get("stream_image")
+            camera_id,
+            stream_image
         ))
         
         saved_count += 1
         saved_names.append(name)
     
     conn.commit()
-    conn.close()
+    
+    # Log attendance check activity
+    await log_activity(
+        action_type="attendance_check",
+        description=f"เช็คชื่อ {len(saved_names)} คน: {', '.join(saved_names)}" + 
+                   (f" (เพิ่งเช็คแล้ว: {', '.join(already_checked)})" if already_checked else ""),
+        request=request,
+        target_table="attendance",
+        new_data={"saved_names": saved_names, "already_checked": already_checked, "camera_id": camera_id},
+        success=True
+    )
     
     # Broadcast attendance update
     await manager.broadcast({
@@ -383,42 +510,82 @@ async def check_attendance():
         "already_checked": already_checked
     })
     
-    # Send Telegram notification
+    # Send Enhanced Telegram notification
     if saved_names and state.telegram_enabled:
         now = datetime.now()
         time_str = now.strftime('%H:%M:%S')
         date_str = now.strftime('%d/%m/%Y')
+        thai_date = now.strftime('%d %B %Y')
         
-        # Get total attendance count for today
-        c = conn.cursor()
-        c.execute('''
+        # Get comprehensive statistics (ใช้ conn ที่ยังเปิดอยู่)
+        c2 = conn.cursor()
+        
+        # Total unique students today
+        c2.execute('''
             SELECT COUNT(DISTINCT name) FROM attendance 
             WHERE DATE(timestamp) = DATE('now')
         ''')
-        total_today = c.fetchone()[0]
+        total_today = c2.fetchone()[0]
         
-        message = f"🔔 <b>การเช็คชื่อใหม่</b>\n\n"
-        message += f"📅 วันที่: {date_str}\n"
-        message += f"⏰ เวลา: {time_str}\n"
-        message += f"✅ เช็คชื่อครั้งนี้: {len(saved_names)} คน\n"
-        message += f"📊 รวมวันนี้: {total_today} คน\n\n"
+        # Total check-ins today (including multiple per person)
+        c2.execute('''
+            SELECT COUNT(*) FROM attendance 
+            WHERE DATE(timestamp) = DATE('now')
+        ''')
+        total_checkins_today = c2.fetchone()[0]
         
-        message += f"<b>รายชื่อที่เช็คชื่อ:</b>\n"
+        # Camera vs Manual breakdown
+        c2.execute('''
+            SELECT 
+                SUM(CASE WHEN camera_id != 'manual' THEN 1 ELSE 0 END) as camera_count,
+                SUM(CASE WHEN camera_id = 'manual' THEN 1 ELSE 0 END) as manual_count
+            FROM attendance 
+            WHERE DATE(timestamp) = DATE('now')
+        ''')
+        camera_manual = c2.fetchone()
+        camera_count = camera_manual[0] or 0
+        manual_count = camera_manual[1] or 0
+        
+        # Recent activity (last 30 minutes)
+        c2.execute('''
+            SELECT COUNT(DISTINCT name) FROM attendance 
+            WHERE timestamp > datetime('now', '-30 minutes')
+        ''')
+        recent_activity = c2.fetchone()[0]
+        
+        # Build enhanced message
+        tg_message = f"🎯 <b>การเช็คชื่อใหม่</b>\n"
+        tg_message += f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        
+        tg_message += f"📅 <b>วันที่:</b> {thai_date}\n"
+        tg_message += f"⏰ <b>เวลา:</b> {time_str}\n"
+        tg_message += f"� <b>ประเภท:</b> {'📷 กล้อง' if camera_id != 'manual' else '✋ Manual'}\n\n"
+        
+        tg_message += f"✅ <b>เช็คชื่อครั้งนี้:</b> {len(saved_names)} คน\n"
         for i, name in enumerate(saved_names, 1):
-            message += f"{i}. {name}\n"
+            tg_message += f"   {i}. {name}\n"
         
         if already_checked:
-            message += f"\n⚠️ <b>เพิ่งเช็คไปแล้ว (ภายใน 5 นาที):</b>\n"
+            tg_message += f"\n⚠️ <b>เพิ่งเช็คแล้ว:</b> {len(already_checked)} คน\n"
             for name in already_checked:
-                message += f"• {name}\n"
+                tg_message += f"   • {name}\n"
+        
+        tg_message += f"\n📊 <b>สถิติวันนี้:</b>\n"
+        tg_message += f"👥 นักเรียนที่มา: {total_today} คน\n"
+        tg_message += f"📝 ครั้งทั้งหมด: {total_checkins_today} ครั้ง\n"
+        tg_message += f"📷 ด้วยกล้อง: {camera_count} ครั้ง\n"
+        tg_message += f"✋ ด้วยมือ: {manual_count} ครั้ง\n"
+        tg_message += f"🔥 ล่าสุด 30 นาที: {recent_activity} คน\n"
         
         # Send message
-        asyncio.create_task(send_telegram_message(message))
+        asyncio.create_task(send_telegram_message(tg_message))
         
-        # Send photo if available
-        if payload.get("stream_image"):
-            caption = f"📷 เช็คชื่อ {time_str}: {', '.join(saved_names)}"
-            asyncio.create_task(send_telegram_photo(payload["stream_image"], caption))
+        # Send photo if available with enhanced caption
+        if stream_image:
+            caption = f"📷 เช็คชื่อ {time_str}\n👥 {', '.join(saved_names)}\n📊 รวมวันนี้: {total_today} คน"
+            asyncio.create_task(send_telegram_photo(stream_image, caption))
+    
+    conn.close()
     
     return {
         "status": "success",
@@ -579,12 +746,14 @@ async def create_student(student: Dict[str, Any]):
         
         student_id = c.lastrowid
         conn.commit()
-        conn.close()
         
         return {"success": True, "id": student_id, "message": "Student created"}
     except sqlite3.IntegrityError:
-        conn.close()
         raise HTTPException(status_code=400, detail="Student ID already exists")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    finally:
+        conn.close()
 
 # ============================================================
 # Dashboard Endpoints
@@ -760,7 +929,7 @@ async def get_students_attendance_status(date: Optional[str] = Query(None)):
     }
 
 @app.post("/api/v1/attendance/manual-save")
-async def save_manual_attendance(payload: Dict[str, Any]):
+async def save_manual_attendance(payload: Dict[str, Any], request: Request = None):
     """Save manual attendance (with switch toggles)"""
     conn = get_db()
     c = conn.cursor()
@@ -805,6 +974,16 @@ async def save_manual_attendance(payload: Dict[str, Any]):
     conn.commit()
     conn.close()
     
+    # Log manual attendance activity
+    await log_activity(
+        action_type="manual_attendance",
+        description=f"บันทึกการเช็คชื่อแบบ Manual วันที่ {target_date}: เพิ่ม {saved_count} คน, ลบ {removed_count} คน",
+        request=request,
+        target_table="attendance",
+        new_data={"date": target_date, "saved_count": saved_count, "removed_count": removed_count},
+        success=True
+    )
+    
     # Broadcast update
     await manager.broadcast({
         "type": "attendance_manual_updated",
@@ -822,7 +1001,7 @@ async def save_manual_attendance(payload: Dict[str, Any]):
     }
 
 @app.put("/api/v1/attendance/{record_id}")
-async def update_attendance_record(record_id: int, payload: Dict[str, Any]):
+async def update_attendance_record(record_id: int, payload: Dict[str, Any], request: Request = None):
     """Update a specific attendance record (for history editing)"""
     conn = get_db()
     c = conn.cursor()
@@ -838,15 +1017,38 @@ async def update_attendance_record(record_id: int, payload: Dict[str, Any]):
     # Update fields
     name = payload.get("name", existing["name"])
     timestamp = payload.get("timestamp", existing["timestamp"])
+    modified_at = datetime.now().isoformat()
+    
+    # Store old data for logging
+    old_data = {
+        "name": existing["name"],
+        "timestamp": existing["timestamp"]
+    }
+    new_data = {
+        "name": name,
+        "timestamp": timestamp
+    }
     
     c.execute('''
         UPDATE attendance 
-        SET name = ?, timestamp = ?
+        SET name = ?, timestamp = ?, modified_at = ?
         WHERE id = ?
-    ''', (name, timestamp, record_id))
+    ''', (name, timestamp, modified_at, record_id))
     
     conn.commit()
     conn.close()
+    
+    # Log edit activity
+    await log_activity(
+        action_type="attendance_edit",
+        description=f"แก้ไขข้อมูลการเช็คชื่อ ID {record_id}: {existing['name']} → {name}",
+        request=request,
+        target_table="attendance",
+        target_id=record_id,
+        old_data=old_data,
+        new_data=new_data,
+        success=True
+    )
     
     return {
         "success": True,
@@ -855,10 +1057,14 @@ async def update_attendance_record(record_id: int, payload: Dict[str, Any]):
     }
 
 @app.delete("/api/v1/attendance/{record_id}")
-async def delete_attendance_record(record_id: int):
+async def delete_attendance_record(record_id: int, request: Request = None):
     """Delete a specific attendance record"""
     conn = get_db()
     c = conn.cursor()
+    
+    # Get record info before deletion for logging
+    c.execute('SELECT * FROM attendance WHERE id = ?', (record_id,))
+    record = c.fetchone()
     
     c.execute('DELETE FROM attendance WHERE id = ?', (record_id,))
     deleted = c.rowcount
@@ -866,13 +1072,79 @@ async def delete_attendance_record(record_id: int):
     conn.commit()
     conn.close()
     
-    if deleted == 0:
+    if deleted > 0:
+        # Log delete activity
+        await log_activity(
+            action_type="attendance_delete",
+            description=f"ลบข้อมูลการเช็คชื่อ ID {record_id}: {record['name'] if record else 'Unknown'}",
+            request=request,
+            target_table="attendance",
+            target_id=record_id,
+            old_data={"name": record["name"], "timestamp": record["timestamp"]} if record else None,
+            success=True
+        )
+        return {"success": True, "message": "Record deleted"}
+    else:
+        await log_activity(
+            action_type="attendance_delete",
+            description=f"พยายามลบข้อมูลการเช็คชื่อ ID {record_id} แต่ไม่พบข้อมูล",
+            request=request,
+            target_table="attendance",
+            target_id=record_id,
+            success=False
+        )
         raise HTTPException(status_code=404, detail="Record not found")
+
+@app.get("/api/v1/activity-logs")
+async def get_activity_logs(
+    limit: int = Query(50, ge=1, le=500),
+    action_type: Optional[str] = Query(None),
+    date: Optional[str] = Query(None)
+):
+    """Get activity logs with optional filtering"""
+    conn = get_db()
+    c = conn.cursor()
+    
+    # Build query with filters
+    query = "SELECT * FROM activity_logs WHERE 1=1"
+    params = []
+    
+    if action_type:
+        query += " AND action_type = ?"
+        params.append(action_type)
+    
+    if date:
+        query += " AND DATE(timestamp) = ?"
+        params.append(date)
+    
+    query += " ORDER BY timestamp DESC LIMIT ?"
+    params.append(limit)
+    
+    c.execute(query, params)
+    logs = []
+    
+    for row in c.fetchall():
+        log = {
+            "id": row["id"],
+            "action_type": row["action_type"],
+            "description": row["description"],
+            "user_ip": row["user_ip"],
+            "user_agent": row["user_agent"],
+            "target_table": row["target_table"],
+            "target_id": row["target_id"],
+            "old_data": json.loads(row["old_data"]) if row["old_data"] else None,
+            "new_data": json.loads(row["new_data"]) if row["new_data"] else None,
+            "timestamp": row["timestamp"],
+            "success": bool(row["success"])
+        }
+        logs.append(log)
+    
+    conn.close()
     
     return {
         "success": True,
-        "message": "Record deleted",
-        "id": record_id
+        "data": logs,
+        "count": len(logs)
     }
 
 @app.get("/api/v1/model/students")
